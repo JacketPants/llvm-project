@@ -1603,6 +1603,19 @@ InstructionCost X86TTIImpl::getArithmeticInstrCost(
     { ISD::FDIV, MVT::v4f64,   { 28, 35, 1, 3 } }, // vdivpd
   };
 
+  // Targets with fast 256-bit vector division use lower costs than the
+  // generic AVX2 table. This must be checked before the generic AVX2 lookup.
+  if (ST->hasAVX2() && ST->hasFastVectorFP256()) {
+    static const CostKindTblEntry AVX2FastVectorFP256CostTable[] = {
+      { ISD::FDIV, MVT::v8f32,   {  7, 13, 1, 1 } }, // vdivps
+      { ISD::FDIV, MVT::v4f64,   { 14, 20, 1, 1 } }, // vdivpd
+    };
+    if (const auto *Entry =
+            CostTableLookup(AVX2FastVectorFP256CostTable, ISD, LT.second))
+      if (auto KindCost = Entry->Cost[CostKind])
+        return LT.first * *KindCost;
+  }
+
   // Look for AVX2 lowering tricks for custom cases.
   if (ST->hasAVX2())
     if (const auto *Entry = CostTableLookup(AVX2CostTable, ISD, LT.second))
@@ -5227,7 +5240,7 @@ X86TTIImpl::getIntrinsicInstrCost(const IntrinsicCostAttributes &ICA,
       if (const auto *Entry = CostTableLookup(XOPCostTbl, ISD, MTy))
         if (auto KindCost = Entry->Cost[CostKind])
           return adjustTableCost(Entry->ISD, *KindCost, LT, ICA.getFlags());
-
+  
     if (ST->hasAVX2())
       if (const auto *Entry = CostTableLookup(AVX2CostTbl, ISD, MTy))
         if (auto KindCost = Entry->Cost[CostKind])
